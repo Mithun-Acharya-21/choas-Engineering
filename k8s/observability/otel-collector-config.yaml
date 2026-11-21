@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: chaos-control-plane
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/component: telemetry-pipeline
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: "sandbox-toxiproxy-metrics"
+              scrape_interval: 5s
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  action: keep
+                  regex: .+
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+
+    processors:
+      batch:
+        send_batch_size: 256
+        timeout: 1s
+
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 75
+        spike_limit_percentage: 20
+
+      # Sanitize sensitive attributes and enforce tenant invariants
+      attributes:
+        actions:
+          - key: http.request.header.authorization
+            action: delete
+          - key: http.request.header.cookie
+            action: delete
+          - key: db.password
+            action: delete
+
+    exporters:
+      # Metrics to Prometheus TSDB
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: "chaosengine"
+        send_timestamps: true
+        metric_expiration: 180s
+
+      # Distributed Traces to Jaeger
+      otlp/jaeger:
+        endpoint: jaeger.chaos-control-plane.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+      # Structured Logs to Loki
+      loki:
+        endpoint: http://loki.chaos-control-plane.svc.cluster.local:3100/loki/api/v1/push
+        labels:
+          attributes:
+            tenant_id: "chaosengine.tenant_id"
+            sandbox_id: "chaosengine.sandbox_id"
+            service_name: "service.name"
+            log_level: "level"
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, attributes, batch]
+          exporters: [prometheus]
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, attributes, batch]
+          exporters: [otlp/jaeger]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, attributes, batch]
+          exporters: [loki]
+      telemetry:
+        logs:
+          level: "info"

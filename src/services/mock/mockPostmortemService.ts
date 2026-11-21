@@ -1,0 +1,142 @@
+import {
+  AIIncidentExplanation,
+  IncidentPostmortem,
+  PostmortemActionItem,
+  PostmortemStatus,
+  SingleActionItemUpdate,
+} from '../../types/domain/postmortem';
+
+export const mockPostmortemData: Record<string, IncidentPostmortem> = {
+  'inc-9901-latency-breach': {
+    id: 'pm-9901-postmortem-official',
+    incident_id: 'inc-9901-latency-breach',
+    tenant_id: 'c1f7b0f6-9304-4c57-897e-d309085ec617',
+    project_id: 'proj-alpha-001',
+    sandbox_id: 'sbx-sandbox-alpha-us-east-1',
+    title: 'Postmortem: Checkout Latency Surge & 504 Gateway Timeouts',
+    status: 'DRAFT',
+    version: 1,
+    primary_root_cause_service: 'payment-service',
+    primary_root_cause_score: 94.5,
+    primary_root_cause_confidence: 'HIGH',
+    deterministic_propagation_path: ['payment-service', 'order-service', 'api-gateway'],
+    m8_analysis_id: 'rca-9901-analysis-v1',
+    executive_summary:
+      'On November 20, 2026, an automated chaos experiment (exp-9411) injected 350ms synthetic network latency into payment-service. Deterministic M8 topology analysis confirmed that payment-service localized queuing delayed synchronous RPC responses, rapidly exhausting order-service thread connection pools and triggering HTTP 504 timeouts at the api-gateway. Active multi-window SLO burn rate reached 14.4x before automated incident triage and deterministic RCA isolation.',
+    incident_timeline: [
+      { time: 'T-00:00', event: 'Chaos Latency Fault injected into payment-service (exp-9411).' },
+      { time: 'T+00:42', event: 'payment-service p99 latency increased from 42ms to 912ms.' },
+      { time: 'T+01:15', event: 'SLO burn rate exceeded 14.4x threshold across 1h rolling window.' },
+      { time: 'T+01:30', event: 'M7 automated incident inc-9901-latency-breach triggered.' },
+      { time: 'T+02:00', event: 'M8 deterministic RCA isolated payment-service (94.5/100 HIGH confidence).' },
+    ],
+    technical_narrative:
+      'Telemetry package ev-fault-lat-01 and trace span ev-trace-sp04 definitively confirm that payment-service was the root cause origin. Upstream callers in order-service lacked adequate circuit-breaking and held open TCP sockets during thread starvation. Log stream ev-log-err-01 captured repetitive pool timeouts.',
+    impact_assessment: {
+      slo_breached: 'Checkout Latency p99 < 400ms',
+      burn_rate: 14.4,
+      severity: 'CRITICAL',
+      affected_services: ['payment-service', 'order-service', 'api-gateway'],
+    },
+    recommendations: [
+      {
+        id: 'rec-001',
+        title: 'Configure Adaptive Circuit Breaker on order-service -> payment-service RPC',
+        category: 'IMMEDIATE_MITIGATION',
+        priority: 'P0_CRITICAL',
+        description: 'Implement a 300ms call timeout with an open circuit threshold of 5 consecutive errors.',
+        rationale: 'Prevents downstream database or payment slowdowns from consuming connection threads in core order processing.',
+        estimated_effort: 'Low (2 hours)',
+        risk_tradeoff: 'Causes rapid fail-fast errors instead of thread pool hanging.',
+        requires_human_approval: true,
+        supporting_evidence_ids: ['ev-fault-lat-01', 'ev-trace-sp04'],
+      },
+      {
+        id: 'rec-002',
+        title: 'Increase Horizontal Pod Autoscaling (HPA) Max Replicas for payment-service',
+        category: 'ROOT_CAUSE_REMEDIATION',
+        priority: 'P1_HIGH',
+        description: 'Expand deployment replicas from min 2 / max 5 to min 4 / max 12 with CPU target at 70%.',
+        rationale: 'Absorbs transient traffic spikes and mitigates localized CPU saturation.',
+        estimated_effort: 'Low (1 day deployment)',
+        risk_tradeoff: 'Marginally higher Kubernetes node resource consumption.',
+        requires_human_approval: true,
+        supporting_evidence_ids: ['ev-log-err-01'],
+      },
+      {
+        id: 'rec-003',
+        title: 'Integrate Chaos Latency Gates in Staging Pipeline',
+        category: 'PREVENTIVE_ACTION',
+        priority: 'P2_MEDIUM',
+        description: 'Run automated 200ms latency injections against payment-service during pull request CI/CD validation.',
+        rationale: 'Verifies circuit breaker resilience before deploying to production.',
+        estimated_effort: 'Medium (1 sprint)',
+        risk_tradeoff: 'Extends integration pipeline runtime by 4 minutes.',
+        requires_human_approval: true,
+        supporting_evidence_ids: ['ev-fault-lat-01'],
+      },
+    ],
+    action_items: [
+      {
+        id: 'act-001',
+        title: 'Implement Istio Circuit Breaker DestinationRule for payment-service',
+        description: 'Deploy DestinationRule with maxConnections=100 and consecutive5xxErrors=3.',
+        priority: 'P0_CRITICAL',
+        status: 'OPEN',
+        assigned_to: 'alex.engineer@acme.com',
+        due_date: '2026-11-25',
+        supporting_evidence_ids: ['ev-fault-lat-01'],
+        created_at: '2026-11-20T12:00:00Z',
+        updated_at: '2026-11-20T12:00:00Z',
+      },
+      {
+        id: 'act-002',
+        title: 'Conduct Load & Resilience Testing on payment connection pool',
+        description: 'Execute Locust synthetic stress test up to 2500 req/sec.',
+        priority: 'P1_HIGH',
+        status: 'IN_PROGRESS',
+        assigned_to: 'sarah.sre@acme.com',
+        due_date: '2026-12-02',
+        supporting_evidence_ids: ['ev-trace-sp04'],
+        created_at: '2026-11-20T12:00:00Z',
+        updated_at: '2026-11-20T12:00:00Z',
+      },
+    ],
+    created_by: 'sarah.sre@acme.com',
+    created_at: '2026-11-20T12:00:00Z',
+    updated_at: '2026-11-20T12:00:00Z',
+  },
+};
+
+export const mockAIExplanationData: Record<string, AIIncidentExplanation> = {
+  'inc-9901-latency-breach': {
+    incident_id: 'inc-9901-latency-breach',
+    rca_analysis_id: 'rca-9901-analysis-v1',
+    executive_summary:
+      'Autonomous analysis completed: payment-service definitively identified as initial root cause (+350ms delay, score 94.5/100). Downstream connection exhaustion cascaded to order-service and api-gateway.',
+    technical_narrative:
+      'Detailed telemetry analysis confirms synchronization bottleneck at payment-service. Trace ev-trace-sp04 recorded 912ms critical span delay, directly correlating with chaos injection ev-fault-lat-01.',
+    failure_propagation_walkthrough:
+      'payment-service (fault origin) -> order-service (queue starvation) -> api-gateway (504 timeout).',
+    recommendations: mockPostmortemData['inc-9901-latency-breach'].recommendations,
+    sections: [
+      {
+        section_type: 'root_cause_analysis',
+        title: 'Authoritative Root Cause Assessment',
+        content:
+          'payment-service is the sole primary candidate meeting temporal precedence and latency impact criteria.',
+        cited_evidence_ids: ['ev-fault-lat-01', 'ev-trace-sp04'],
+        confidence_note: 'High confidence from multi-factor analysis.',
+      },
+    ],
+    cited_evidence_ids: ['ev-fault-lat-01', 'ev-trace-sp04', 'ev-log-err-01'],
+    unverified_citations: [],
+    hallucination_detected: false,
+    status: 'COMPLETED',
+    provider: 'Groq (llama-3.3-70b-versatile)',
+    model_name: 'llama-3.3-70b-versatile',
+    is_deterministic_fallback: false,
+    generated_at: '2026-11-20T12:00:00Z',
+    generation_duration_ms: 340.0,
+  },
+};

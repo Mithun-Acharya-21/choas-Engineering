@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: chaos-control-plane
+  labels:
+    app.kubernetes.io/name: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 5s
+      scrape_timeout: 4s
+
+    storage:
+      tsdb:
+        retention.time: 7d
+
+    scrape_configs:
+      # Scrape OpenTelemetry Collector Prom exporter
+      - job_name: "otel-collector"
+        static_configs:
+          - targets: ["otel-collector.chaos-control-plane.svc.cluster.local:8889"]
+
+      # Rapid PromQL Scrapes of Toxiproxy Metrics on injected sidecars
+      - job_name: "kubernetes-sandbox-toxiproxy"
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace]
+            action: keep
+            regex: sandbox-.*
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: "8474"
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: service

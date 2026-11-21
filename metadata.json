@@ -1,0 +1,6 @@
+{
+  "name": "Obsidian Telemetry",
+  "description": "Mission-critical SRE telemetry, service mesh topology, distributed log tracing, and chaos engineering command console.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
